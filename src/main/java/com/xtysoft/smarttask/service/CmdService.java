@@ -13,6 +13,7 @@ import org.springframework.stereotype.Component;
 import javax.annotation.PostConstruct;
 import javax.annotation.Resource;
 import java.time.LocalDateTime;
+import java.time.temporal.ChronoUnit;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -47,8 +48,8 @@ public class CmdService {
         for (TaskScheduleEntity schedule : schedulesCache) {
 
 
-            if (schedule.getIsEnabled() && now.equals(schedule.getRunAt())) {
-                // 获取对应的任务
+            if (schedule.getIsEnabled() && schedule.getRunAt() != null &&
+                    (now.truncatedTo(ChronoUnit.SECONDS).equals(schedule.getRunAt().truncatedTo(ChronoUnit.SECONDS)))) {                // 获取对应的任务
                 TaskEntity task = taskMap.get(schedule.getTaskId());
                 if (task != null && task.getIsEnabled()) {
                     log.info("正常, 执行任务ID: {}, 任务名称: {}", task.getId(), task.getName());

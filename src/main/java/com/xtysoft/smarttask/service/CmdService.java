@@ -53,7 +53,7 @@ public class CmdService {
                 TaskEntity task = taskMap.get(schedule.getTaskId());
                 if (task != null && task.getIsEnabled()) {
                     log.info("正常, 执行任务ID: {}, 任务名称: {}", task.getId(), task.getName());
-                    // executeCommand(task.getCommand());
+                     executeCommand(task.getCommand());
 
                     // 计算下次执行时间
                     LocalDateTime nextRunAt = calculateNextRunTime(schedule, now);
@@ -86,7 +86,7 @@ public class CmdService {
                         // 执行任务命令
                         log.info("超时, 执行任务ID: {}, 任务名称: {}", task.getId(), task.getName());
                         // 这里应该实际执行任务命令
-                        // executeCommand(task.getCommand());
+                         executeCommand(task.getCommand());
                     }
 
                     // 根据类型和循环方式计算下次执行时间
@@ -179,5 +179,35 @@ public class CmdService {
         schedulesCache = schedulesMapper.selectList(null);
 
         log.info("updateCache更新了 {} 个任务实体和 {} 个调度计划", taskMap.size(), schedulesCache.size());
+    }
+
+    /**
+     * 执行系统命令
+     *
+     * @param command 要执行的命令
+     */
+    private void executeCommand(String command) {
+        if (command == null || command.trim().isEmpty()) {
+            log.warn("命令为空，无法执行");
+            return;
+        }
+
+        try {
+            log.info("开始执行命令: {}", command);
+            
+            // 使用 Runtime 执行命令
+            Process process = Runtime.getRuntime().exec(command);
+            
+            // 等待命令执行完成
+            int exitCode = process.waitFor();
+            
+            if (exitCode == 0) {
+                log.info("命令执行成功: {}", command);
+            } else {
+                log.error("命令执行失败，退出码: {}，命令: {}", exitCode, command);
+            }
+        } catch (Exception e) {
+            log.error("执行命令时发生异常: {}", command, e);
+        }
     }
 }

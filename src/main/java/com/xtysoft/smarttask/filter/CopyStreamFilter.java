@@ -3,7 +3,7 @@ package com.xtysoft.smarttask.filter;
 import cn.hutool.json.JSONObject;
 import cn.hutool.json.JSONUtil;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.tomcat.util.http.fileupload.ByteArrayOutputStream;
+import org.springframework.web.util.ContentCachingResponseWrapper;
 import org.springframework.stereotype.Component;
 
 import javax.servlet.*;
@@ -32,6 +32,7 @@ public class CopyStreamFilter implements Filter {
 
         HttpServletRequest httpRequest = (HttpServletRequest) request;
         HttpServletResponse httpResponse = (HttpServletResponse) response;
+        
         if (!httpRequest.getRequestURI().startsWith("/api/v1/api/")) {
 //            log.info("不是/api/v1/api/开头,跳过不执行");
             chain.doFilter(request, response); // 跳过过滤器
@@ -77,6 +78,17 @@ public class CopyStreamFilter implements Filter {
         log.info("请求地址：{}", httpRequest.getRequestURI());
         log.info("请求参数：{}", requestBody);
 
+        // 使用ContentCachingResponseWrapper包装response以避免getWriter冲突
+        ContentCachingResponseWrapper responseWrapper = new ContentCachingResponseWrapper(httpResponse);
+        
+        if (!httpRequest.getRequestURI().startsWith("/api/v1/api/")) {
+//            log.info("不是/api/v1/api/开头,跳过不执行");
+            chain.doFilter(request, responseWrapper); // 跳过过滤器
+            responseWrapper.copyBodyToResponse();
+            return;
+        }
+//        log.info("是/api开头，执行过滤器 {}", httpRequest.getRequestURI());
+
         // 使用自定义的 HttpServletRequestWrapper 包装请求体
         HttpServletRequestWrapper wrappedRequest = new HttpServletRequestWrapper(httpRequest) {
             @Override
@@ -115,7 +127,8 @@ public class CopyStreamFilter implements Filter {
         };
 
         // 继续处理请求链
-        chain.doFilter(wrappedRequest, response);
+        chain.doFilter(wrappedRequest, responseWrapper);
+        responseWrapper.copyBodyToResponse();
     }
 
     @Override

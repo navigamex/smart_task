@@ -1,10 +1,10 @@
 package com.xtysoft.smarttask.service;
 
 
-import com.xtysoft.smarttask.entity.TaskEntity;
-import com.xtysoft.smarttask.entity.TaskScheduleEntity;
+import com.xtysoft.smarttask.entity.TasksEntity;
+import com.xtysoft.smarttask.entity.SchedulesEntity;
 import com.xtysoft.smarttask.mapper.SchedulesMapper;
-import com.xtysoft.smarttask.mapper.TaskMapper;
+import com.xtysoft.smarttask.mapper.TasksMapper;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.TaskScheduler;
 import org.springframework.scheduling.support.CronTrigger;
@@ -13,6 +13,7 @@ import org.springframework.stereotype.Component;
 import javax.annotation.PostConstruct;
 import javax.annotation.Resource;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.time.temporal.ChronoUnit;
 import java.util.HashMap;
 import java.util.List;
@@ -25,13 +26,13 @@ public class CmdService {
     @Resource
     SchedulesMapper schedulesMapper;
     @Resource
-    TaskMapper taskMapper;
+    TasksMapper taskMapper;
 
     // 存储任务实体的Map，供execute方法使用
-    private Map<Integer, TaskEntity> taskMap = new HashMap<>();
+    private Map<Integer, TasksEntity> taskMap = new HashMap<>();
 
     // 存储调度计划列表的缓存，避免每次都查询数据库
-    private List<TaskScheduleEntity> schedulesCache;
+    private List<SchedulesEntity> schedulesCache;
 
     @PostConstruct
     public void init() {
@@ -45,15 +46,20 @@ public class CmdService {
         LocalDateTime now = LocalDateTime.now();
         boolean needUpdateCache = false;
 
-        for (TaskScheduleEntity schedule : schedulesCache) {
+        for (SchedulesEntity schedule : schedulesCache) {
 
 
-            if (schedule.getIsEnabled() && schedule.getRunAt() != null &&
+            if (schedule.getEnabled() == 1 && schedule.getRunAt() != null &&
                     (now.truncatedTo(ChronoUnit.SECONDS).equals(schedule.getRunAt().truncatedTo(ChronoUnit.SECONDS)))) {                // 获取对应的任务
-                TaskEntity task = taskMap.get(schedule.getTaskId());
-                if (task != null && task.getIsEnabled()) {
-                    log.info("正常, 执行任务ID: {}, 任务名称: {}", task.getId(), task.getName());
-                     executeCommand(task.getCommand());
+                TasksEntity task = taskMap.get(schedule.getTaskId());
+                if (task != null && task.getEnabled() == 1) {
+                    // 判断当前时间是否在允许执行的时间范围内
+                    if (isExecutionTimeValid(schedule, now)) {
+                        log.info("正常, 执行任务ID: {}, 任务名称: {}", task.getId(), task.getName());
+                        executeCommand(task.getCommand());
+                    } else {
+                        log.info("正常时间匹配但不在允许时间范围内, 不执行任务ID: {}, 任务名称: {}", task.getId(), task.getName());
+                    }
 
                     // 计算下次执行时间
                     LocalDateTime nextRunAt = calculateNextRunTime(schedule, now);
@@ -67,32 +73,37 @@ public class CmdService {
 
 
             // 检查调度是否启用
-            if (schedule.getIsEnabled() && schedule.getRunAt() != null && schedule.getRunAt().isBefore(now)) {
+            if (schedule.getEnabled() == 1 && schedule.getRunAt() != null && schedule.getRunAt().isBefore(now)) {
                 // 获取对应的任务
-                TaskEntity task = taskMap.get(schedule.getTaskId());
-                if (task != null && task.getIsEnabled()) {
+                TasksEntity task = taskMap.get(schedule.getTaskId());
+                if (task != null && task.getEnabled() == 1) {
                     // 检查超时执行行为
                     boolean shouldExecute = true;
                     if (schedule.getMissedExecutionBehavior() != null) {
-                        TaskScheduleEntity.MissedExecutionBehavior behavior =
-                                TaskScheduleEntity.MissedExecutionBehavior.fromValue(schedule.getMissedExecutionBehavior());
-                        if (behavior == TaskScheduleEntity.MissedExecutionBehavior.SKIP) {
+                        SchedulesEntity.MissedExecutionBehavior behavior =
+                                SchedulesEntity.MissedExecutionBehavior.fromValue(schedule.getMissedExecutionBehavior());
+                        if (behavior == SchedulesEntity.MissedExecutionBehavior.SKIP) {
                             // 超时不执行
                             shouldExecute = false;
                         }
                     }
 
                     if (shouldExecute) {
-                        // 执行任务命令
-                        log.info("超时, 执行任务ID: {}, 任务名称: {}", task.getId(), task.getName());
-                        // 这里应该实际执行任务命令
-                         executeCommand(task.getCommand());
+                        // 判断当前时间是否在允许执行的时间范围内
+                        if (isExecutionTimeValid(schedule, now)) {
+                            // 执行任务命令
+                            log.info("超时, 执行任务ID: {}, 任务名称: {}", task.getId(), task.getName());
+                            // 这里应该实际执行任务命令
+                            executeCommand(task.getCommand());
+                        } else {
+                            log.info("超时时间匹配但不在允许时间范围内, 不执行任务ID: {}, 任务名称: {}", task.getId(), task.getName());
+                        }
                     }
 
                     // 根据类型和循环方式计算下次执行时间
                     LocalDateTime nextRunAt = calculateNextRunTime(schedule, now);
                     if (nextRunAt == null) {
-                        schedule.setIsEnabled(false);
+                        schedule.setEnabled(0);
                     }
 
                     schedule.setRunAt(nextRunAt);
@@ -118,16 +129,16 @@ public class CmdService {
      * @param now 当前时间
      * @return 下次执行时间，如果是一次性任务则返回null
      */
-    private LocalDateTime calculateNextRunTime(TaskScheduleEntity schedule, LocalDateTime now) {
+    private LocalDateTime calculateNextRunTime(SchedulesEntity schedule, LocalDateTime now) {
         Integer whileType = schedule.getWhileType();
-        Float whileValue = schedule.getWhileValue();
+        Double whileValue = schedule.getWhileValue();
         LocalDateTime runAt = schedule.getRunAt();
         if (whileValue == null) {
-            whileValue = 1.0f;
+            whileValue = 1.0;
         }
 
         try {
-            TaskScheduleEntity.ScheduleType scheduleType = TaskScheduleEntity.ScheduleType.fromValue(whileType);
+            SchedulesEntity.ScheduleType scheduleType = SchedulesEntity.ScheduleType.fromValue(whileType);
 
             switch (scheduleType) {
                 case ONE_TIME: // 一次性任务
@@ -169,9 +180,9 @@ public class CmdService {
         //schedulesMapper 遍历,拿到所有实体 根据上面的实体拿到自己的对应task信息
         //然后写入成员变量中, 后备execute使用
 
-        List<TaskEntity> tasks = taskMapper.selectList(null);
+        List<TasksEntity> tasks = taskMapper.selectList(null);
         taskMap.clear();
-        for (TaskEntity task : tasks) {
+        for (TasksEntity task : tasks) {
             taskMap.put(task.getId(), task);
         }
 
@@ -208,6 +219,35 @@ public class CmdService {
             }
         } catch (Exception e) {
             log.error("执行命令时发生异常: {}", command, e);
+        }
+    }
+
+    /**
+     * 判断当前时间是否在允许执行的时间范围内
+     * @param schedule 调度实体
+     * @param now 当前时间
+     * @return 是否在允许执行的时间范围内
+     */
+    private boolean isExecutionTimeValid(SchedulesEntity schedule, LocalDateTime now) {
+        // 获取允许执行的开始和结束时间
+        LocalTime allowRunStartTime = schedule.getAllowRunStartTime();
+        LocalTime allowRunEndTime = schedule.getAllowRunEndTime();
+        
+        // 如果没有设置时间范围限制，则允许执行
+        if (allowRunStartTime == null || allowRunEndTime == null) {
+            return true;
+        }
+        
+        // 获取当前时间的时间部分
+        LocalTime currentTime = now.toLocalTime();
+        
+        // 判断当前时间是否在允许的时间范围内（包含边界）
+        if (allowRunStartTime.isBefore(allowRunEndTime)) {
+            // 正常情况：开始时间早于结束时间（如 09:00 - 17:00）
+            return !currentTime.isBefore(allowRunStartTime) && !currentTime.isAfter(allowRunEndTime);
+        } else {
+            // 跨天情况：开始时间晚于结束时间（如 22:00 - 06:00）
+            return !currentTime.isBefore(allowRunStartTime) || !currentTime.isAfter(allowRunEndTime);
         }
     }
 }

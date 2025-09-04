@@ -5,6 +5,7 @@ import cn.dev33.satoken.filter.SaServletFilter;
 import cn.dev33.satoken.router.SaHttpMethod;
 import cn.dev33.satoken.router.SaRouter;
 import cn.dev33.satoken.util.SaResult;
+import com.xtysoft.smarttask.handler.SaTokenInterceptor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
@@ -17,14 +18,15 @@ public class SaTokenConfigure implements WebMvcConfigurer {
     @Override
     public void addInterceptors(InterceptorRegistry registry) {
         // 注册 Sa-Token 拦截器，校验规则为 StpUtil.checkLogin() 登录校验。
-//        registry.addInterceptor(new SaTokenInterceptor() )
-//                .addPathPatterns("/api/**")
-//                .excludePathPatterns("/api/v1/admin/login/**")
-//                .excludePathPatterns("/api/v1/dev/login/**")
-//                .excludePathPatterns("/api/v1/api/**")
-//                .excludePathPatterns("/api/other/**")
-//                .excludePathPatterns("/browser/**")
-//        ;
+        registry.addInterceptor(new SaTokenInterceptor() )
+                .addPathPatterns("/api/**")
+                .addPathPatterns("/admin/**")
+                .excludePathPatterns("/api/v1/admin/login/**")
+                .excludePathPatterns("/api/v1/dev/login/**")
+                .excludePathPatterns("/api/v1/api/**")
+                .excludePathPatterns("/api/other/**")
+                .excludePathPatterns("/browser/**")
+        ;
     }
 
     /**

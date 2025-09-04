@@ -42,8 +42,8 @@ spring:
         log4j:
           enabled: false
   redis:
-    host: 192.168.111.223
-    port: 65001
+    host: 172.22.0.100
+    port: 56379
     password: "*OUojasofu203rjoajsdlfsu2381232434313122334132dsgdzgGDW38*"
     timeout: 10000s
     jedis:

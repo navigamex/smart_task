@@ -1,49 +1,49 @@
-server:
-  port: 8016
-spring:
-  application:
-    name: wallet3
-  servlet:
-    multipart:
-      max-file-size: 100MB
-      max-request-size: 100MB
-  cloud:
-    nacos:
-      discovery:
-          server-addr: @nacos.server-addr@
-          namespace: @nacos.namespace@
-          service: ${spring.application.name}
-      config:
-        server-addr: @nacos.server-addr@
-        namespace: @nacos.namespace@
-#        username:  @nacos.username@
-#        password:  @nacos.password@
-        file-extension: yaml
-        prefix: wallet3
-        group: DEFAULT_GROUP
-#    sentinel:
-#      transport:
-#        dashboard: localhost:8080
-#        port: 8719
-feign:
-  httpclient:
-    enabled: false
-  okhttp:
-    enabled: true
-  sentinel:
-    enabled: true
-  hystrix:
-    enabled: false
-  client:
-    config:
-      default:
-        connect-timeout: 5000
-        read-timeout: 20000
-
-
-management:
-  endpoints:
-    web:
-      exposure:
-        include: "*"
-        exclude: env,beans
+#server:
+#  port: 8016
+#spring:
+#  application:
+#    name: wallet3
+#  servlet:
+#    multipart:
+#      max-file-size: 100MB
+#      max-request-size: 100MB
+#  cloud:
+#    nacos:
+#      discovery:
+#          server-addr: @nacos.server-addr@
+#          namespace: @nacos.namespace@
+#          service: ${spring.application.name}
+#      config:
+#        server-addr: @nacos.server-addr@
+#        namespace: @nacos.namespace@
+##        username:  @nacos.username@
+##        password:  @nacos.password@
+#        file-extension: yaml
+#        prefix: wallet3
+#        group: DEFAULT_GROUP
+##    sentinel:
+##      transport:
+##        dashboard: localhost:8080
+##        port: 8719
+#feign:
+#  httpclient:
+#    enabled: false
+#  okhttp:
+#    enabled: true
+#  sentinel:
+#    enabled: true
+#  hystrix:
+#    enabled: false
+#  client:
+#    config:
+#      default:
+#        connect-timeout: 5000
+#        read-timeout: 20000
+#
+#
+#management:
+#  endpoints:
+#    web:
+#      exposure:
+#        include: "*"
+#        exclude: env,beans

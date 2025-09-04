@@ -1,5 +1,6 @@
 package com.xtysoft.smarttask.service;
  
+import com.xtysoft.common.common.Response;
 import com.xtysoft.smarttask.entity.AdminEntity;
 import com.xtysoft.smarttask.dto.AdminDTO;
 import com.xtysoft.smarttask.mapper.AdminMapper;
@@ -13,4 +14,5 @@ import com.xtysoft.smarttask.mapper.AdminMapper;
  */
 public interface AdminService  {
 
+    Response<String> login(AdminDTO dto);
 }

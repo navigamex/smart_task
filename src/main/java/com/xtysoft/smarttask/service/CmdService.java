@@ -1,9 +1,11 @@
 package com.xtysoft.smarttask.service;
 
 
+import com.xtysoft.smarttask.entity.TaskLogsEntity;
 import com.xtysoft.smarttask.entity.TasksEntity;
 import com.xtysoft.smarttask.entity.SchedulesEntity;
 import com.xtysoft.smarttask.mapper.SchedulesMapper;
+import com.xtysoft.smarttask.mapper.TaskLogsMapper;
 import com.xtysoft.smarttask.mapper.TasksMapper;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.TaskScheduler;
@@ -27,6 +29,10 @@ public class CmdService {
     SchedulesMapper schedulesMapper;
     @Resource
     TasksMapper taskMapper;
+    @Resource
+    TaskLogsService taskLogsService;
+    @Resource
+    TaskLogsMapper taskLogsMapper;
 
     // 存储任务实体的Map，供execute方法使用
     private Map<Integer, TasksEntity> taskMap = new HashMap<>();
@@ -56,7 +62,7 @@ public class CmdService {
                     // 判断当前时间是否在允许执行的时间范围内
                     if (isExecutionTimeValid(schedule, now)) {
                         log.info("正常, 执行任务ID: {}, 任务名称: {}", task.getId(), task.getName());
-                        executeCommand(task.getCommand());
+                        executeCommand(task,schedule.getId() );
                     } else {
                         log.info("正常时间匹配但不在允许时间范围内, 不执行任务ID: {}, 任务名称: {}", task.getId(), task.getName());
                     }
@@ -94,7 +100,7 @@ public class CmdService {
                             // 执行任务命令
                             log.info("超时, 执行任务ID: {}, 任务名称: {}", task.getId(), task.getName());
                             // 这里应该实际执行任务命令
-                            executeCommand(task.getCommand());
+                            executeCommand(task, schedule.getId() );
                         } else {
                             log.info("超时时间匹配但不在允许时间范围内, 不执行任务ID: {}, 任务名称: {}", task.getId(), task.getName());
                         }
@@ -195,30 +201,110 @@ public class CmdService {
     /**
      * 执行系统命令
      *
-     * @param command 要执行的命令
      */
-    private void executeCommand(String command) {
-        if (command == null || command.trim().isEmpty()) {
+    private void executeCommand(TasksEntity task, int scheduleId) {
+
+        if (task.getCommand() == null || task.getCommand().isEmpty()) {
             log.warn("命令为空，无法执行");
             return;
         }
 
+        // 创建日志实体
+        TaskLogsEntity taskLogsEntity = new TaskLogsEntity();
+        taskLogsEntity.setStartedAt(LocalDateTime.now());
+        taskLogsEntity.setTaskId(task.getId() );
+        taskLogsEntity.setScheduleId(scheduleId );
+
         try {
-            log.info("开始执行命令: {}", command);
+            log.info("开始执行命令: {}", task.getCommand());
             
             // 使用 Runtime 执行命令
-            Process process = Runtime.getRuntime().exec(command);
+            Process process = Runtime.getRuntime().exec(task.getCommand());
+            
+            // 捕获命令的标准输出和错误输出
+            StringBuilder outputBuilder = new StringBuilder();
+            
+            // 读取标准输出
+            java.io.BufferedReader stdOutReader = new java.io.BufferedReader(
+                new java.io.InputStreamReader(process.getInputStream())
+            );
+            
+            // 读取错误输出
+            java.io.BufferedReader stdErrReader = new java.io.BufferedReader(
+                new java.io.InputStreamReader(process.getErrorStream())
+            );
+            
+            // 读取标准输出内容
+            String line;
+            while ((line = stdOutReader.readLine()) != null) {
+                outputBuilder.append(line).append("\n");
+            }
+            
+            // 读取错误输出内容
+            while ((line = stdErrReader.readLine()) != null) {
+                outputBuilder.append("ERROR: ").append(line).append("\n");
+            }
             
             // 等待命令执行完成
             int exitCode = process.waitFor();
+            taskLogsEntity.setExitCode(exitCode);
+            taskLogsEntity.setCompletedAt(LocalDateTime.now());
+            
+            // 设置输出内容
+            taskLogsEntity.setOutput(outputBuilder.toString());
             
             if (exitCode == 0) {
-                log.info("命令执行成功: {}", command);
+                log.info("命令执行成功: {}", task.getCommand());
+                taskLogsEntity.setStatus("SUCCESS");
+                
+                // 如果有成功后执行的命令，则执行它
+                if (task.getCommandOnSuccess() != null && !task.getCommandOnSuccess().trim().isEmpty()) {
+                    task.setCommand(task.getCommandOnSuccess());
+
+                    task.setCommandOnSuccess(null);
+                    task.setCommandOnFailure(null);
+
+                    executeCommand(task ,scheduleId);
+                }
             } else {
-                log.error("命令执行失败，退出码: {}，命令: {}", exitCode, command);
+                log.error("命令执行失败，退出码: {}，命令: {}", exitCode, task.getCommand());
+                taskLogsEntity.setStatus("FAILURE");
+                
+                // 如果有失败后执行的命令，则执行它
+                if (task.getCommandOnFailure() != null && !task.getCommandOnFailure().trim().isEmpty()) {
+                    task.setCommand(task.getCommandOnFailure());
+
+                    task.setCommandOnSuccess(null);
+                    task.setCommandOnFailure(null);
+                    executeCommand(task ,scheduleId);
+                }
             }
         } catch (Exception e) {
-            log.error("执行命令时发生异常: {}", command, e);
+            log.error("执行命令时发生异常: {}", task.getCommand(), e);
+            taskLogsEntity.setStatus("FAILURE");
+            taskLogsEntity.setOutput(e.getMessage());
+            
+            // 如果有失败后执行的命令，则执行它
+            if (task.getCommandOnFailure() != null && !task.getCommandOnFailure().trim().isEmpty()) {
+                task.setCommand(task.getCommandOnFailure());
+
+                task.setCommandOnSuccess(null);
+                task.setCommandOnFailure(null);
+            }
+        } finally {
+            // 计算执行耗时
+            if (taskLogsEntity.getStartedAt() != null && taskLogsEntity.getCompletedAt() != null) {
+                long duration = java.time.Duration.between(taskLogsEntity.getStartedAt(), taskLogsEntity.getCompletedAt()).toMillis();
+                taskLogsEntity.setDurationMs((int) duration);
+            }
+            
+            // 保存日志记录
+            try {
+                taskLogsMapper.insert(taskLogsEntity);
+                log.debug("命令执行日志已保存: {}", taskLogsEntity);
+            } catch (Exception e) {
+                log.error("保存命令执行日志失败: {}", taskLogsEntity, e);
+            }
         }
     }
 
